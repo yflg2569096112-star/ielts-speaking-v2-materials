@@ -585,6 +585,17 @@ body:hover #nav{opacity:.85}
 #deck{flex:0 0 1280px}
 .slide:not(.active){display:none}
 @media (hover:none), (pointer:coarse){#nav{opacity:.95}}
+
+/* Touch annotation controls */
+#inkCanvas{position:absolute;top:0;left:0;width:1280px;height:720px;z-index:8;pointer-events:none}
+#inkCanvas.ink-enabled{pointer-events:auto;touch-action:none;cursor:crosshair}
+#inkToolbar{position:fixed;left:12px;bottom:16px;z-index:100;display:flex;align-items:center;max-width:calc(100vw - 155px);overflow-x:auto;padding:5px;background:rgba(20,27,49,.94);border-radius:14px;box-shadow:0 3px 12px rgba(0,0,0,.25);-webkit-overflow-scrolling:touch}
+#inkToolbar button{flex:0 0 auto;min-width:44px;min-height:40px;margin:0 3px;padding:0 9px;border:0;border-radius:9px;background:#343d59;color:#fff;font:600 14px -apple-system,BlinkMacSystemFont,sans-serif}
+#inkToolbar button.selected{background:#e8a33d;color:#151a2b}
+#inkToolbar .inkTools{display:flex;align-items:center}
+#inkToolbar .inkTools[hidden]{display:none}
+#inkStatus{position:fixed;left:14px;bottom:68px;z-index:101;padding:4px 8px;border-radius:5px;background:#fff;color:#9d2020;font:13px sans-serif}
+#inkStatus[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -1807,9 +1818,9 @@ function toggleGuide(){drawer.classList.toggle('open');gbtn.classList.toggle('on
 gbtn.onclick=e=>{e.stopPropagation();toggleGuide()};
 addEventListener('resize',fit);
 addEventListener('keydown',e=>{
-  if(['ArrowRight','ArrowDown','PageDown',' ','Enter'].includes(e.key)){e.preventDefault();go(cur+1)}
-  else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(e.key)){e.preventDefault();go(cur-1)}
-  else if(e.key==='Home')go(0); else if(e.key==='End')go(slides.length-1);
+  const target=e.target; if(target&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
+  if(e.key==='ArrowDown'){e.preventDefault();go(cur+1)}
+  else if(e.key==='ArrowUp'){e.preventDefault();go(cur-1)}
   else if(e.key==='f'||e.key==='F')toggleFs();
   else if(e.key==='n'||e.key==='N')toggleGuide();
   else if(e.key==='Escape'&&drawer.classList.contains('open'))toggleGuide();
@@ -1818,8 +1829,7 @@ function toggleFs(){document.fullscreenElement?document.exitFullscreen():documen
 document.getElementById('prev').onclick=()=>go(cur-1);
 document.getElementById('next').onclick=()=>go(cur+1);
 document.getElementById('fs').onclick=toggleFs;
-let tx=null;addEventListener('touchstart',e=>tx=e.touches[0].clientX);
-addEventListener('touchend',e=>{if(tx===null)return;const d=e.changedTouches[0].clientX-tx;if(Math.abs(d)>50)go(cur+(d<0?1:-1));tx=null});
+
 
 document.querySelectorAll('.quiz').forEach(q=>q.addEventListener('click',e=>{e.stopPropagation();q.classList.toggle('shown')}));
 document.querySelectorAll('.revealAll').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();
@@ -2020,5 +2030,35 @@ fit();go(cur);
 })();
 
 </script>
-</body>
+
+<div id="inkToolbar" role="toolbar" aria-label="批注工具"><button type="button" id="inkToggle" aria-pressed="false">画笔</button><div class="inkTools" id="inkTools" hidden><button type="button" data-ink="red" aria-label="红笔">红</button><button type="button" data-ink="blue" aria-label="蓝笔">蓝</button><button type="button" data-ink="black" aria-label="黑笔">黑</button><button type="button" data-ink="eraser">橡皮</button><button type="button" id="inkUndo">撤销</button><button type="button" id="inkClear">清除</button></div></div><div id="inkStatus" hidden></div>
+<script>
+(function(){
+'use strict';
+var deck=document.getElementById('deck'),slides=Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+var toolbar=document.getElementById('inkToolbar'),toggle=document.getElementById('inkToggle'),tools=document.getElementById('inkTools'),status=document.getElementById('inkStatus');
+var canvas=document.createElement('canvas');canvas.id='inkCanvas';canvas.width=1280;canvas.height=720;canvas.setAttribute('aria-label','当前页批注区域');deck.appendChild(canvas);
+var ctx=canvas.getContext('2d'),enabled=false,tool='red',pointer=null,currentStroke=null,currentIndex=-1,strokes=[];
+var colors={red:'#e13f3f',blue:'#2267df',black:'#20242c'};
+function index(){return slides.findIndex(function(s){return s.classList.contains('active')})}
+function key(i){return 'speaking-ink-v1:'+location.pathname+':'+i}
+function report(message){status.textContent=message;status.hidden=!message}
+function read(i){try{var v=JSON.parse(localStorage.getItem(key(i))||'[]');return Array.isArray(v)?v:[]}catch(e){report('笔迹无法从本机读取');return []}}
+function save(){try{localStorage.setItem(key(currentIndex),JSON.stringify(strokes));report('')}catch(e){report('本机保存失败，请勿关闭页面')}}
+function render(){ctx.clearRect(0,0,canvas.width,canvas.height);strokes.forEach(function(s){if(!s.points||!s.points.length)return;ctx.save();ctx.globalCompositeOperation=s.tool==='eraser'?'destination-out':'source-over';ctx.strokeStyle=colors[s.tool]||'#20242c';ctx.fillStyle=ctx.strokeStyle;ctx.lineWidth=s.tool==='eraser'?28:4;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(s.points[0][0],s.points[0][1]);if(s.points.length===1){ctx.lineTo(s.points[0][0]+.01,s.points[0][1]+.01)}else{s.points.slice(1).forEach(function(p){ctx.lineTo(p[0],p[1])})}ctx.stroke();ctx.restore()})}
+function sync(){var i=index();if(i<0||i===currentIndex)return;if(currentStroke){currentStroke=null;pointer=null}currentIndex=i;strokes=read(i);render()}
+function select(t){tool=t;Array.prototype.forEach.call(tools.querySelectorAll('[data-ink]'),function(b){b.classList.toggle('selected',b.getAttribute('data-ink')===tool)})}
+function setEnabled(on){enabled=on;canvas.classList.toggle('ink-enabled',on);toggle.textContent=on?'浏览':'画笔';toggle.setAttribute('aria-pressed',on?'true':'false');tools.hidden=!on;if(on)select(tool)}
+function point(e){var r=canvas.getBoundingClientRect();return [Math.round((e.clientX-r.left)*1280/r.width*10)/10,Math.round((e.clientY-r.top)*720/r.height*10)/10]}
+canvas.addEventListener('pointerdown',function(e){if(!enabled||pointer!==null)return; e.preventDefault();e.stopPropagation();sync();pointer=e.pointerId;currentStroke={tool:tool,points:[point(e)]};strokes.push(currentStroke);try{canvas.setPointerCapture(pointer)}catch(ignore){}render()});
+canvas.addEventListener('pointermove',function(e){if(pointer!==e.pointerId||!currentStroke)return;e.preventDefault();e.stopPropagation();currentStroke.points.push(point(e));render()});
+function finish(e){if(pointer!==e.pointerId)return;e.preventDefault();e.stopPropagation();pointer=null;currentStroke=null;save()}
+canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
+toggle.addEventListener('click',function(e){e.stopPropagation();setEnabled(!enabled)});
+Array.prototype.forEach.call(tools.querySelectorAll('[data-ink]'),function(b){b.addEventListener('click',function(e){e.stopPropagation();select(b.getAttribute('data-ink'))})});
+document.getElementById('inkUndo').addEventListener('click',function(e){e.stopPropagation();sync();if(strokes.length){strokes.pop();render();save()}});
+document.getElementById('inkClear').addEventListener('click',function(e){e.stopPropagation();sync();if(strokes.length&&window.confirm('清除当前页的全部批注？')){strokes=[];render();save()}});
+new MutationObserver(sync).observe(deck,{subtree:true,attributes:true,attributeFilter:['class']});sync();
+})();
+</script></body>
 </html>
