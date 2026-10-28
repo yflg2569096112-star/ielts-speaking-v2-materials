@@ -1758,8 +1758,8 @@ gbtn.onclick=e=>{e.stopPropagation();toggleGuide()};
 addEventListener('resize',fit);var speakingZoomTimer=null;if(window.visualViewport){window.visualViewport.addEventListener('resize',function(){clearTimeout(speakingZoomTimer);if(window.visualViewport.scale<=1.02){speakingZoomTimer=setTimeout(fit,150)}})}
 addEventListener('keydown',e=>{
   const target=e.target; if(target&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))return;
-  if(e.key==='ArrowDown'){e.preventDefault();go(cur+1)}
-  else if(e.key==='ArrowUp'){e.preventDefault();go(cur-1)}
+  if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();go(cur+1)}
+  else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();go(cur-1)}
   else if(e.key==='f'||e.key==='F')toggleFs();
   else if(e.key==='n'||e.key==='N')toggleGuide();
   else if(e.key==='Escape'&&drawer.classList.contains('open'))toggleGuide();
